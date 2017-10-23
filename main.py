@@ -64,7 +64,7 @@ undistorted = cv2.undistort(combined, mtx, dist, None, mtx)
 #plt.imshow(undistorted)
 #plt.show()
 #rectify street surface
-border_size = 200
+border_size = 400
 dst = np.float32([[border_size, border_size], [1000 + border_size, border_size], [1000 + border_size, 1000 + 2* border_size], [border_size, 1000 + 2 * border_size]])
 src = np.float32([[586, 455], [699, 455], [1037, 664], [286, 664]])
 M = cv2.getPerspectiveTransform(src, dst)
