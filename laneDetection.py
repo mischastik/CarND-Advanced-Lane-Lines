@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-def findLaneLines(binary_warped):
+def findLaneLines(binary_warped, xm_per_pix, ym_per_pix):
     # Assuming you have created a warped binary image called "binary_warped"
     # Take a histogram of the bottom half of the image
     histogram = np.sum(binary_warped[binary_warped.shape[0]//2:,:], axis=0)
@@ -82,18 +82,51 @@ def findLaneLines(binary_warped):
     left_fit = np.polyfit(lefty, leftx, 2)
     right_fit = np.polyfit(righty, rightx, 2)
 
-    # Generate x and y values for plotting
-    ploty = np.linspace(0, binary_warped.shape[0] - 1, binary_warped.shape[0])
-    left_fitx = left_fit[0] * ploty ** 2 + left_fit[1] * ploty + left_fit[2]
-    right_fitx = right_fit[0] * ploty ** 2 + right_fit[1] * ploty + right_fit[2]
 
     out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
     out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
-    plt.imshow(out_img)
-    plt.plot(left_fitx, ploty, color='yellow')
-    plt.plot(right_fitx, ploty, color='yellow')
-    plt.xlim(0, out_img.shape[1])
-    plt.ylim(out_img.shape[0], 0)
-    plt.show()
 
-    return [left_fit, right_fit]
+    left_fit_cr = np.polyfit(lefty * ym_per_pix, leftx * xm_per_pix, 2)
+    right_fit_cr = np.polyfit(righty * ym_per_pix, rightx * xm_per_pix, 2)
+
+    return [left_fit, right_fit, left_fit_cr, right_fit_cr, out_img]
+
+def trackLaneLines(binary_warped, left_fit, right_fit, xm_per_pix, ym_per_pix):
+    # Assume you now have a new warped binary image
+    # from the next frame of video (also called "binary_warped")
+    # It's now much easier to find line pixels!
+    nonzero = binary_warped.nonzero()
+    nonzeroy = np.array(nonzero[0])
+    nonzerox = np.array(nonzero[1])
+    margin = 100
+    polyvals_left = left_fit[0] * (nonzeroy ** 2) + left_fit[1] * nonzeroy + left_fit[2]
+    left_lane_inds = ((nonzerox > (polyvals_left - margin)) & (nonzerox < (polyvals_left + margin)))
+    polyvals_right = right_fit[0] * (nonzeroy ** 2) + right_fit[1] * nonzeroy + right_fit[2]
+    right_lane_inds = ((nonzerox > (polyvals_right - margin)) & (nonzerox < (polyvals_right + margin)))
+
+    # Again, extract left and right line pixel positions
+    leftx = nonzerox[left_lane_inds]
+    lefty = nonzeroy[left_lane_inds]
+    rightx = nonzerox[right_lane_inds]
+    righty = nonzeroy[right_lane_inds]
+    # Fit a second order polynomial to each
+    left_fit = np.polyfit(lefty, leftx, 2)
+    right_fit = np.polyfit(righty, rightx, 2)
+    left_fit_cr = np.polyfit(lefty * ym_per_pix, leftx * xm_per_pix, 2)
+    right_fit_cr = np.polyfit(righty * ym_per_pix, rightx * xm_per_pix, 2)
+
+    return [left_fit, right_fit, left_fit_cr, right_fit_cr]
+
+def measure_curvature(poly_coeffs, y) :
+    r_curve = (1 + (2 * poly_coeffs[0] * y + poly_coeffs[1])**2)**(2.0 / 3.0) / abs(2 * poly_coeffs[0])
+    return r_curve
+
+def evaluate_poly(coeffs, y):
+    return coeffs[0] * y**2 + coeffs[1] * y + coeffs[2]
+
+def measure_offset(left_fit, right_fit, y, width):
+    left_val = evaluate_poly(left_fit, y)
+    right_val = evaluate_poly((right_fit, y))
+    center = (left_val + right_val) / 2.0
+    return center - width / 2.0
+
