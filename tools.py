@@ -32,7 +32,7 @@ def pipeline(img, s_thresh=(0.3, 1.0), sm_thresh=(50, 130), sd_thresh=(0.7, 1.15
     #remove some isolated noise pixels
     sd_binary = cv2.morphologyEx(sd_binary, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT,(3,3)))
     # Threshold saturation channel
-    plt.imshow(s_channel)
+    #plt.imshow(s_channel)
     s_binary = np.zeros_like(s_channel)
     s_binary[(s_channel > s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
     # Stack channels

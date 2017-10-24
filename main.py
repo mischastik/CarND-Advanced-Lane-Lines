@@ -6,6 +6,7 @@ from tools import pipeline
 import matplotlib.pyplot as plt
 import pickle
 from pathlib import Path
+from findLaneLines import findLaneLines
 
 ### PART 1: Calibrate the camera
 
@@ -69,5 +70,6 @@ dst = np.float32([[border_size, border_size], [1000 + border_size, border_size],
 src = np.float32([[586, 455], [699, 455], [1037, 664], [286, 664]])
 M = cv2.getPerspectiveTransform(src, dst)
 warped = cv2.warpPerspective(undistorted, M, (1000 + 2*border_size, 1000 + 2 * border_size))
-plt.imshow(warped)
-plt.show()
+#plt.imshow(warped)
+#plt.show()
+[left_fit, right_fit] = findLaneLines(warped)
