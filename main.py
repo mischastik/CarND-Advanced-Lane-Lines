@@ -4,7 +4,7 @@ import numpy as np
 from tools import pipeline
 import matplotlib.pyplot as plt
 
-from laneDetection import findLaneLines, trackLaneLines
+from laneDetection import findLaneLines, trackLaneLines, measure_curvature, measure_offset, computeMetricPolyCoeffs
 from imageTransformation import calibrate_camera
 
 ### PART 1: Calibrate the camera
@@ -12,7 +12,7 @@ from imageTransformation import calibrate_camera
 ret, mtx, dist = calibrate_camera()
 
 #load a smaple image
-img = cv2.imread('./test_images/straight_lines2.jpg')
+img = cv2.imread('./test_images/test2.jpg')
 imgRGB = img[:,:,::-1]
 #plt.imshow(imgRGB)
 #plt.show()
@@ -37,16 +37,19 @@ undistorted = cv2.undistort(combined, mtx, dist, None, mtx)
 border_size = 400
 dst = np.float32([[border_size, 2 * border_size], [1000 + border_size, 2* border_size], [1000 + border_size, 1000 + 2*border_size], [border_size, 1000+2*border_size]])
 src = np.float32([[583, 460], [704, 460], [1049, 680], [275, 680]])
-# height is two dashes and two gaps
+# height is two dashes and two gaps = 18m (assuming gaps are approx. 9m and line segments are approx. 3m)
 # width is from line centers = 3.7m
-ym_per_pix = 18 / 1000
+ym_per_pix = 24.384 / 1000
 xm_per_pix = 3.7 / 1000
 
 M = cv2.getPerspectiveTransform(src, dst)
 warped = cv2.warpPerspective(undistorted, M, (1000 + 2*border_size, 1000 + 2*border_size))
 plt.imshow(warped)
-plt.show()
-[left_fit, right_fit, left_fit_cr, right_fit_cr, out_img] = findLaneLines(warped)
+#plt.show()
+[left_fit, right_fit, out_img] = findLaneLines(warped)
+
+left_fit_cr = computeMetricPolyCoeffs(left_fit, warped.shape[0], xm_per_pix, ym_per_pix)
+right_fit_cr = computeMetricPolyCoeffs(right_fit, warped.shape[0], xm_per_pix, ym_per_pix)
 
 # Generate x and y values for plotting
 ploty = np.linspace(0, warped.shape[0] - 1, warped.shape[0])
@@ -57,10 +60,14 @@ plt.plot(left_fitx, ploty, color='yellow')
 plt.plot(right_fitx, ploty, color='yellow')
 plt.xlim(0, out_img.shape[1])
 plt.ylim(out_img.shape[0], 0)
-plt.show()
+#plt.show()
 
-[left_fit, right_fit, left_fit_cr, right_fit_cr, out_img] = trackLaneLines(warped, left_fit, right_fit, xm_per_pix, ym_per_pix)
+[left_fit, right_fit] = trackLaneLines(warped, left_fit, right_fit)
 
+curvature_left = measure_curvature(left_fit_cr, y=(warped.shape[0] - 1)*ym_per_pix)
+curvature_right = measure_curvature(right_fit_cr, y=(warped.shape[0] - 1)*ym_per_pix)
+offset = measure_offset(left_fit_cr, right_fit_cr, y=(warped.shape[0] - 1)*ym_per_pix, width=warped.shape[1]*xm_per_pix)
+print("cL: {0}; cR: {1}, offset: {2}".format(curvature_left, curvature_right, offset))
 # Generate x and y values for plotting
 ploty = np.linspace(0, warped.shape[0] - 1, warped.shape[0])
 left_fitx = left_fit[0] * ploty ** 2 + left_fit[1] * ploty + left_fit[2]
