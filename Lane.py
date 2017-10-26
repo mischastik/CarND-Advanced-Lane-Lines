@@ -1,4 +1,6 @@
+
 import numpy as np
+
 
 class Line():
     def __init__(self):
@@ -22,3 +24,4 @@ class Line():
         self.allx = None
         #y values for detected line pixels
         self.ally = None
+
