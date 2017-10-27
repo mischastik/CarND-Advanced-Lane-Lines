@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 from tools import pipeline
+from Lane import Line
 
 class LaneTracker:
     def __init__(self, mtx, dist):
@@ -11,6 +12,8 @@ class LaneTracker:
         self.ym_per_pix = 1
         self.mtx = mtx
         self.dist = dist
+        self.line_left = Line()
+        self.line_right = Line()
 
     def findLaneLines(self, binary_warped):
         # Assuming you have created a warped binary image called "binary_warped"
@@ -136,6 +139,15 @@ class LaneTracker:
     def evaluate_poly(coeffs, y):
         return coeffs[0] * (y ** 2) + coeffs[1] * y + coeffs[2]
 
+    @staticmethod
+    def evaluate_detection_quality(curvature_left, curvature_right, offset):
+        if (abs(curvature_left - curvature_right) > 250):
+            return False
+        if (offset > 2):
+            return False
+
+        return True
+
     def measure_offset(self, left_fit, right_fit, y, width):
         left_val = self.evaluate_poly(left_fit, y)
         right_val = self.evaluate_poly(right_fit, y)
@@ -145,8 +157,10 @@ class LaneTracker:
         #print(center)
         return center - width / 2.0
 
+
+
     def process_image(self, img):
-        ### PART 2: Extract lines
+        ### Extract line candidate pixels
         combined = pipeline(img, s_thresh=(60, 255), sm_thresh=(50, 130), sd_thresh=(1.15, 1.15))
         combined = np.logical_or(np.squeeze(combined[:, :, 1]), np.squeeze(combined[:, :, 2]))
         combined = combined.astype(np.float32)
@@ -155,11 +169,13 @@ class LaneTracker:
         # plt.show()
 
 
-        ### PART 3: Undistort and rectify images:
-        # LL: 286 664, LR: 286+751=1037,664, UL: 586,455, UR: 586+113=699,455
+        ### Undistort and rectify images:
+        # Coordinates of frustum intersection: LL: 286 664, LR: 286+751=1037,664, UL: 586,455, UR: 586+113=699,455
 
-        # undistort it
+        # undistort image
         undistorted = cv2.undistort(combined, self.mtx, self.dist, None, self.mtx)
+        undistorted_orig = cv2.undistort(img, self.mtx, self.dist, None, self.mtx)
+        #cv2.cvtColor(undistorted_orig, undistorted_orig, cv2.COLOR_BGR2RGB)
         # plt.imshow(undistorted)
         # plt.show()
         # rectify street surface
@@ -173,10 +189,14 @@ class LaneTracker:
         self.xm_per_pix = 3.7 / 1000
 
         M = cv2.getPerspectiveTransform(src, dst)
+        Minv = cv2.getPerspectiveTransform(dst, src)
         warped = cv2.warpPerspective(undistorted, M, (1000 + 2 * border_size, 1000 + 2 * border_size))
         plt.imshow(warped)
         # plt.show()
-        [left_fit, right_fit, out_img] = self.findLaneLines(warped)
+        if self.line_left.detected:
+            [left_fit, right_fit] = self.trackLaneLines(warped, self.line_left.current_fit, self.line_right.current_fit)
+        else:
+            [left_fit, right_fit, out_img] = self.findLaneLines(warped)
 
         left_fit_cr = self.computeMetricPolyCoeffs(left_fit, warped.shape[0])
         right_fit_cr = self.computeMetricPolyCoeffs(right_fit, warped.shape[0])
@@ -185,7 +205,13 @@ class LaneTracker:
         curvature_right = LaneTracker.measure_curvature(right_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix)
         offset = self.measure_offset(left_fit_cr, right_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix,
                                 width=warped.shape[1] * self.xm_per_pix)
-        #TODO: self.evaluate_detection_quality(left_fit_cr, right_fit_cr)
+        if self.evaluate_detection_quality(curvature_left, curvature_right, offset):
+            #detection is ok:
+            self.line_left.add_valid_fit(left_fit, left_fit_cr)
+            self.line_right.add_valid_fit(right_fit, right_fit_cr)
+        else:
+            self.line_left.detected = False
+            self.line_right.detected = False
         # plt.show()
 
         # [left_fit, right_fit] = trackLaneLines(warped, left_fit, right_fit)
@@ -195,27 +221,44 @@ class LaneTracker:
         ploty = np.linspace(0, warped.shape[0] - 1, warped.shape[0])
         left_fitx = left_fit[0] * ploty ** 2 + left_fit[1] * ploty + left_fit[2]
         right_fitx = right_fit[0] * ploty ** 2 + right_fit[1] * ploty + right_fit[2]
-        fig = Figure()
-        canvas = FigureCanvas(fig)
-        ax = fig.gca()
-        ax.axis('off')
 
-        plt.imshow(out_img)
-        plt.plot(left_fitx, ploty, color='yellow')
-        plt.plot(right_fitx, ploty, color='yellow')
-        plt.xlim(0, out_img.shape[1])
-        plt.ylim(out_img.shape[0], 0)
+        #fig = Figure()
+        #canvas = FigureCanvas(fig)
+        #ax = fig.gca()
+        #ax.axis('off')
 
-        #canvas.draw()  # draw the canvas, cache the renderer
+        #plt.imshow(out_img)
+        #plt.plot(left_fitx, ploty, color='yellow')
+        #plt.plot(right_fitx, ploty, color='yellow')
+        #plt.xlim(0, out_img.shape[1])
+        #plt.ylim(out_img.shape[0], 0)
+                #canvas.draw()  # draw the canvas, cache the renderer
 
         #plt_width, plt_height = fig.get_size_inches() * fig.get_dpi()
 
         #augmented_image = np.fromstring(canvas.tostring_rgb(), dtype='uint8')
         #augmented_image = augmented_image.reshape(plt_height, plt_width, 3)
-        canvas.draw()
-        buf = canvas.tostring_rgb()
-        ncols, nrows = canvas.get_width_height()
-        return np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
+        #canvas.draw()
+        #buf = canvas.tostring_rgb()
+        #ncols, nrows = canvas.get_width_height()
+        #return np.fromstring(buf, dtype=np.uint8).reshape(nrows, ncols, 3)
+        # Create an image to draw the lines on
+        warp_zero = np.zeros_like(warped).astype(np.uint8)
+        color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
+
+        # Recast the x and y points into usable format for cv2.fillPoly()
+        pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+        pts = np.hstack((pts_left, pts_right))
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+
+        # Warp the blank back to original image space using inverse perspective matrix (Minv)
+        newwarp = cv2.warpPerspective(color_warp, Minv, (undistorted_orig.shape[1], undistorted_orig.shape[0]))
+        # Combine the result with the original image
+        result = cv2.addWeighted(undistorted_orig, 1, newwarp, 0.3, 0)
+        return result
 
 
 
