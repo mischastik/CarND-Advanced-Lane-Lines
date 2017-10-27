@@ -139,11 +139,19 @@ class LaneTracker:
     def evaluate_poly(coeffs, y):
         return coeffs[0] * (y ** 2) + coeffs[1] * y + coeffs[2]
 
-    @staticmethod
-    def evaluate_detection_quality(curvature_left, curvature_right, offset):
-        if (abs(curvature_left - curvature_right) > 250):
+    def evaluate_detection_quality(self, left_fit_cr, right_fit_cr, height, width):
+        curvature_left = LaneTracker.measure_curvature(left_fit_cr, y=(height - 1) * self.ym_per_pix)
+        curvature_right = LaneTracker.measure_curvature(right_fit_cr, y=(height - 1) * self.ym_per_pix)
+        offset = self.measure_offset(left_fit_cr, right_fit_cr, y=(height - 1) * self.ym_per_pix,
+                                width=width * self.xm_per_pix)
+
+        #if (abs(curvature_left - curvature_right) > 250):
+        #    return False
+        if curvature_right < 250 or curvature_right < 250:
             return False
         if (offset > 2):
+            return False
+        if (abs(right_fit_cr[2] - left_fit_cr[2] - 3.7)) > 1:
             return False
 
         return True
@@ -191,7 +199,7 @@ class LaneTracker:
         M = cv2.getPerspectiveTransform(src, dst)
         Minv = cv2.getPerspectiveTransform(dst, src)
         warped = cv2.warpPerspective(undistorted, M, (1000 + 2 * border_size, 1000 + 2 * border_size))
-        plt.imshow(warped)
+        #plt.imshow(warped)
         # plt.show()
         if self.line_left.detected:
             [left_fit, right_fit] = self.trackLaneLines(warped, self.line_left.current_fit, self.line_right.current_fit)
@@ -201,18 +209,19 @@ class LaneTracker:
         left_fit_cr = self.computeMetricPolyCoeffs(left_fit, warped.shape[0])
         right_fit_cr = self.computeMetricPolyCoeffs(right_fit, warped.shape[0])
 
-        curvature_left = LaneTracker.measure_curvature(left_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix)
-        curvature_right = LaneTracker.measure_curvature(right_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix)
-        offset = self.measure_offset(left_fit_cr, right_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix,
-                                width=warped.shape[1] * self.xm_per_pix)
-        if self.evaluate_detection_quality(curvature_left, curvature_right, offset):
+        if self.evaluate_detection_quality(left_fit_cr, right_fit_cr, warped.shape[0], warped.shape[1]):
             #detection is ok:
             self.line_left.add_valid_fit(left_fit, left_fit_cr)
             self.line_right.add_valid_fit(right_fit, right_fit_cr)
         else:
             self.line_left.detected = False
             self.line_right.detected = False
-        # plt.show()
+            # use previous results instead:
+            if len(self.line_left.recent_fits) > 0:
+                left_fit = self.line_left.current_fit
+                right_fit = self.line_right.current_fit
+                left_fit_cr = self.line_left.current_fit_cr
+                right_fit_cr = self.line_right.current_fit_cr
 
         # [left_fit, right_fit] = trackLaneLines(warped, left_fit, right_fit)
 
@@ -252,12 +261,28 @@ class LaneTracker:
         pts = np.hstack((pts_left, pts_right))
 
         # Draw the lane onto the warped blank image
-        cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+        if self.line_left.detected:
+            cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+        else:
+            cv2.fillPoly(color_warp, np.int_([pts]), (255, 0, 0))
+
 
         # Warp the blank back to original image space using inverse perspective matrix (Minv)
+        undistorted_orig = undistorted_orig[:, :, ::-1]
         newwarp = cv2.warpPerspective(color_warp, Minv, (undistorted_orig.shape[1], undistorted_orig.shape[0]))
         # Combine the result with the original image
         result = cv2.addWeighted(undistorted_orig, 1, newwarp, 0.3, 0)
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        curvature_left = LaneTracker.measure_curvature(left_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix)
+        curvature_right = LaneTracker.measure_curvature(right_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix)
+        offset = self.measure_offset(left_fit_cr, right_fit_cr, y=(warped.shape[0] - 1) * self.ym_per_pix,
+                                width=warped.shape[1] * self.xm_per_pix)
+        dst = right_fit_cr[2] - left_fit_cr[2]
+        cv2.putText(result, 'cL: {0:.2f}'.format(curvature_left), (10, 70), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(result, 'cR: {0:.2f}'.format(curvature_right), (10, 100), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(result, 'offs: {0:.2f}'.format(offset), (10, 130), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(result, 'dst: {0:.2f} '.format(dst), (10, 160), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
         return result
 
 
