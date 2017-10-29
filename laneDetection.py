@@ -7,13 +7,15 @@ from tools import pipeline
 from Lane import Line
 
 class LaneTracker:
-    def __init__(self, mtx, dist):
+    def __init__(self, mtx, dist, alignment_correction = 0):
         self.xm_per_pix = 1
         self.ym_per_pix = 1
         self.mtx = mtx
         self.dist = dist
         self.line_left = Line()
         self.line_right = Line()
+        self.alignment_correction = alignment_correction
+        self.frame_count = 0
 
     def findLaneLines(self, binary_warped):
         # Assuming you have created a warped binary image called "binary_warped"
@@ -24,8 +26,8 @@ class LaneTracker:
         # Create an output image to draw on and  visualize the result
         out_img = np.dstack((binary_warped, binary_warped, binary_warped)) * 255
         out_img = out_img.astype(np.uint8)
-        # plt.imshow(out_img)
-        # plt.show()
+        #plt.imshow(out_img)
+        #plt.show()
         # Find the peak of the left and right halves of the histogram
         # These will be the starting point for the left and right lines
         midpoint = np.int(histogram.shape[0] / 2)
@@ -92,12 +94,15 @@ class LaneTracker:
         righty = nonzeroy[right_lane_inds]
 
         # Fit a second order polynomial to each
+        if lefty.size == 0 or righty.size == 0:
+            return [None, None, out_img]
         left_fit = np.polyfit(lefty, leftx, 2)
         right_fit = np.polyfit(righty, rightx, 2)
 
         out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
         out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
 
+        #cv2.imwrite('out_img.png', out_img)
         return [left_fit, right_fit, out_img]
 
     def trackLaneLines(self, binary_warped, left_fit, right_fit):
@@ -165,21 +170,25 @@ class LaneTracker:
         #print(center)
         return center - width / 2.0
 
-
-
     def process_image(self, img):
         ### Extract line candidate pixels
-        combined = pipeline(img, s_thresh=(60, 255), sm_thresh=(50, 130), sd_thresh=(1.15, 1.15))
-        combined = np.logical_or(np.squeeze(combined[:, :, 1]), np.squeeze(combined[:, :, 2]))
+        combined = pipeline(img, s_thresh=(150, 255), sm_thresh=(20, 255), sd_thresh=(1.15, 1.15))
+
+        #plt.imshow(combined)
+        #plt.show()
+
+        combined = np.logical_and(np.squeeze(combined[:, :, 1]), np.squeeze(combined[:, :, 2]))
         combined = combined.astype(np.float32)
+
         # print(combined.shape)
-        # plt.imshow(combined)
-        # plt.show()
+        #plt.imshow(combined, cmap='gray')
+        #plt.show()
 
 
         ### Undistort and rectify images:
-        # Coordinates of frustum intersection: LL: 286 664, LR: 286+751=1037,664, UL: 586,455, UR: 586+113=699,455
-
+        # Coordinates of long frustum intersection: LL: 286 664, LR: 286+751=1037,664, UL: 586,455, UR: 586+113=699,455
+        # Coordinates of medium frustum intersection: LL: 274 681, LR: 1053 681, UL: 559 475, UR: 729 475
+        # Coordinates of short frustum intersection: LL: 274 681, LR: 1053 681, UL: 540 490, UR: 751 490
         # undistort image
         undistorted = cv2.undistort(combined, self.mtx, self.dist, None, self.mtx)
         undistorted_orig = cv2.undistort(img, self.mtx, self.dist, None, self.mtx)
@@ -188,23 +197,38 @@ class LaneTracker:
         # plt.show()
         # rectify street surface
         border_size = 400
-        dst = np.float32([[border_size, 2 * border_size], [1000 + border_size, 2 * border_size],
-                          [1000 + border_size, 1000 + 2 * border_size], [border_size, 1000 + 2 * border_size]])
-        src = np.float32([[583, 460], [704, 460], [1049, 680], [275, 680]])
-        # height is two dashes and two gaps = 18m (assuming gaps are approx. 9m and line segments are approx. 3m)
+
+        #dst = np.float32([[border_size, 2 * border_size], [1000 + border_size, 2 * border_size],
+        #                  [1000 + border_size, 1000 + 2 * border_size], [border_size, 1000 + 2 * border_size]])
+        dst = np.float32([[border_size, 0], [1000 + border_size, 0],
+                          [1000 + border_size, 1000], [border_size, 1000]])
+        #src = np.float32([[583, 460], [704, 460], [1049, 680], [275, 680]])
+        src = np.float32([[559+self.alignment_correction, 475], [729-self.alignment_correction, 475], [1053, 681], [274, 681]])
+        #src = np.float32([[540, 490], [751, 490], [1053, 681], [274, 681]])
+        # Long: height is two dashes and two gaps = 24m (assuming gaps are approx. 9m and line segments are approx. 3m)
+        # Medium: height is two dashes and one gap = 15m (assuming gaps are approx. 9m and line segments are approx. 3m)
+        # Short: height is one dash and one gap = 12m (assuming gaps are approx. 9m and line segments are approx. 3m)
         # width is from line centers = 3.7m
-        self.ym_per_pix = 24.384 / 1000
-        self.xm_per_pix = 3.7 / 1000
+        #self.ym_per_pix = 24.384 / 1000
+        self.ym_per_pix = 15.0 / 1000.0
+        self.xm_per_pix = 3.7 / 1000.0
 
         M = cv2.getPerspectiveTransform(src, dst)
         Minv = cv2.getPerspectiveTransform(dst, src)
-        warped = cv2.warpPerspective(undistorted, M, (1000 + 2 * border_size, 1000 + 2 * border_size))
-        #plt.imshow(warped)
-        # plt.show()
+        #warped = cv2.warpPerspective(undistorted, M, (1000 + 2 * border_size, 1000 + 2 * border_size))
+        warped = cv2.warpPerspective(undistorted, M, (1000 + 2 * border_size, 1000))
+        #if self.frame_count > 323:
+        #    plt.imshow(warped)
+        #    plt.show()
         if self.line_left.detected:
             [left_fit, right_fit] = self.trackLaneLines(warped, self.line_left.current_fit, self.line_right.current_fit)
         else:
             [left_fit, right_fit, out_img] = self.findLaneLines(warped)
+
+        if left_fit is None or right_fit is None:
+            self.line_left.detected = False
+            self.line_right.detected = False
+            return img
 
         left_fit_cr = self.computeMetricPolyCoeffs(left_fit, warped.shape[0])
         right_fit_cr = self.computeMetricPolyCoeffs(right_fit, warped.shape[0])
@@ -268,7 +292,7 @@ class LaneTracker:
 
 
         # Warp the blank back to original image space using inverse perspective matrix (Minv)
-        undistorted_orig = undistorted_orig[:, :, ::-1]
+        #undistorted_orig = undistorted_orig[:, :, ::-1]
         newwarp = cv2.warpPerspective(color_warp, Minv, (undistorted_orig.shape[1], undistorted_orig.shape[0]))
         # Combine the result with the original image
         result = cv2.addWeighted(undistorted_orig, 1, newwarp, 0.3, 0)
@@ -283,7 +307,8 @@ class LaneTracker:
         cv2.putText(result, 'cR: {0:.2f}'.format(curvature_right), (10, 100), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
         cv2.putText(result, 'offs: {0:.2f}'.format(offset), (10, 130), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
         cv2.putText(result, 'dst: {0:.2f} '.format(dst), (10, 160), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+
+        #plt.imshow(result)
+        #plt.show()
+        self.frame_count += 1
         return result
-
-
-
