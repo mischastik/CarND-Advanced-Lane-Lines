@@ -1,7 +1,7 @@
 import numpy as np
 
 class Line():
-    def __init__(self):
+    def __init__(self, iir_filter_weight = 0.25):
         self.history_length = 5
         # was the line detected in the last iteration?
         self.detected = False
@@ -13,7 +13,8 @@ class Line():
         self.recent_fits = []
         #polynomial coefficients of recent fits (metric)
         self.recent_fits_cr = []
-
+        self.iir_average_fit = None
+        self.iir_filter_weight = iir_filter_weight
 
 
 
@@ -44,8 +45,12 @@ class Line():
         if len(self.recent_fits) > self.history_length:
             self.recent_fits.pop(0)
             self.recent_fits_cr.pop(0)
+        if self.iir_average_fit is None:
+            self.iir_average_fit = fit
+        else:
+            self.iir_average_fit = self.iir_average_fit * (1.0 - self.iir_filter_weight) + fit * self.iir_filter_weight
 
-    def get_best_fit(self):
+    def get_fir_average_fit(self):
         if len(self.recent_fits) == 0:
             return None
         avg_fit = np.zeros_like(self.recent_fits[0])
@@ -55,7 +60,7 @@ class Line():
 
         return avg_fit
 
-    def get_best_fit_cr(self):
+    def get_fir_average_fit_cr(self):
         if len(self.recent_fits_cr) == 0:
             return None
         avg_fit = np.zeros_like(self.recent_fits_cr[0])

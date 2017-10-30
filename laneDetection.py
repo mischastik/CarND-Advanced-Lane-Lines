@@ -247,6 +247,10 @@ class LaneTracker:
                 left_fit_cr = self.line_left.current_fit_cr
                 right_fit_cr = self.line_right.current_fit_cr
 
+        if self.line_left.iir_average_fit is not None:
+            left_fit = self.line_left.iir_average_fit
+        if self.line_right.iir_average_fit is not None:
+            right_fit = self.line_right.iir_average_fit
         # [left_fit, right_fit] = trackLaneLines(warped, left_fit, right_fit)
 
         #print("cL: {0}; cR: {1}, offset: {2}".format(curvature_left, curvature_right, offset))
@@ -288,7 +292,7 @@ class LaneTracker:
         if self.line_left.detected:
             cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
         else:
-            cv2.fillPoly(color_warp, np.int_([pts]), (255, 0, 0))
+            cv2.fillPoly(color_warp, np.int_([pts]), (32, 255, 0))
 
 
         # Warp the blank back to original image space using inverse perspective matrix (Minv)
