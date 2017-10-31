@@ -5,11 +5,20 @@
 [image1]: ./writeup_materials/calibration3.jpg "Original"
 [image11]: ./writeup_materials/calibration3_undistorted.jpg "Undistorted"
 
-[image2]: ./test_images/test1.jpg "Road Transformed"
-[image3]: ./examples/binary_combo_example.jpg "Binary Example"
-[image4]: ./examples/warped_straight_lines.jpg "Warp Example"
-[image5]: ./examples/color_fit_lines.jpg "Fit Visual"
-[image6]: ./examples/example_output.jpg "Output"
+[image2]: ./writeup_materials/01_input.png "Sample input"
+
+[image31]: ./writeup_materials/02tresholded.png "Thresholded output"
+[image32]: ./writeup_materials/03thresholded_after_AND.png "Thresholded final"
+
+[image4]: ./writeup_materials/04undistorted.png "Undistortion Example"
+
+[image5]: ./writeup_materials/05warped.png "Warped image"
+
+[image61]: ./writeup_materials/07polynomial_fit.png "Sliding window search"
+[image62]: ./writeup_materials/09_tracking.png "Tracking result"
+
+[image7]: ./writeup_materials/10_final_result.png "Final result"
+
 [video1]: ./project_video.mp4 "Video"
 
 ### Camera Calibration
@@ -28,64 +37,100 @@ OpenCV's 'undistort' method can apply these model parameters to compute an undis
 ![Original checkerboard image][image1]
 ![Undistorted checkerboard image][image11]
 
-### Pipeline (single images)
+### Lane Detection
 
-#### 1. Provide an example of a distortion-corrected image.
+#### Overview
+The lane detection algorithm consists of several stages:
+* Lane marker enhancement: Thresholds to edge and color channels are applied to determine candidate pixels for lane markers.  
+* Undistortion: The image is rectified so this lines are projected to lines.
+* Warping: An orthogonal projection of the street surface in front of the car is computed.
+* Line detection: 
+** Initialization: A 2-D to 1-D projection is computed in a window of full width and part of the height along the y-axis of the warped image. The two local maxima in each window are calculated to find the approximate line position.
+** Polynomial fit: A polynomial is fit through each of the approximate line positons. The polynomials should represent the left and right lane markers.
+** Quality assessment: The detected lane markers are evaluated for geometric consistency. 
+* Line tracking: If a lane was consistently detected in the previous frame, this detection is taken as a basis for tracking.
+** Candidate extraction: Candidate pixels are selected in the proximity of the valid previously detected lane markers.
+** Polynomial fit: A polynomial is fit through each of the candidate regions.
 
-To demonstrate this step, I will describe how I apply the distortion correction to one of the test images like this one:
-![alt text][image2]
+#### Sample Input
+The follwing image was used as an input for all illustrations of the stages of the algorithm: 
 
-#### 2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
+![Input][image2]
 
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
 
-![alt text][image3]
+#### Lane Marker Enhancement:
 
-#### 3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
+This part can be found in method 'thresholding' in 'tools.py'.
 
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
+For lane marker enhancement I first tried thresholding edge magnitude, edge direction and the L channel from the LSV color space.
+Edge direction turned out to be too unspecific and was dropped. Edge magnitude and L channel thresholding worked very well on most of the test images and on 'project_video.mp4'. It didn't work well on 'challenge_video.mp4' though. The R channel from RGB seems to be a more robust candidate. The edge magnitude still was rather specific but thinned out the lines a little too much even at are carefully chosen thresholds, so a morphologic dilation was applied to the thresholded result. The thresholds on the red channel and the gradient magnitude ware chosen so that each candidate pixel should be contained in both thresholded inputs (logical AND). This turned out to be more robust than choosing stricter thresholds and require only one image to contain the candidate (logical OR). 
+This leads to the following candidates (green channel is edge thresholded, blue channel is intensity thresholded red channel):
 
-```python
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
-```
+![Thresholded candidates][image31]
 
-This resulted in the following source and destination points:
+After applying an AND operation we get this final thresholded image:
+
+![Thresholded final output][image32]
+
+
+#### Undistortion:
+
+This image is then undistorted with the previously calculated lens model parameters:
+
+![Result after undistortion][image4]
+
+#### Warping:
+For computing an orthogonal projection of the street surface in front of the car we use OpenCVs 'getPerspectiveTransform' and 'warpPerspective'.
+The output image should be 1000 wide for the lane and a configurable border of border_size to the left and right (we chose 400) in our case. The choice of the border size depends on the maximum curvature expected and the distance we want to look ahead. The later should be mapped to 1000 pixels in the warped image. We tried three different look ahead distances based on the distance of the dashed on the road:
+* Short: one dash and one gap (approx. 12m)
+* Medium: two dashes and one gap (approx. 15m)
+* Far: two dashes and two gaps (approx. 24m)
+
+For the test data the medium distance seemed to be appropriate which leads to this mapping of source and destination points:
 
 | Source        | Destination   | 
 |:-------------:|:-------------:| 
-| 585, 460      | 320, 0        | 
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
+| 559, 475      | 400, 0 | 
+| 729, 475      | 1400, 0      |
+| 1053, 681     | 1400, 1000      |
+| 174, 681      | 400, 1000        |
 
-I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
+The result image should be 1400x1000 pixels large and have a vertical resultion of 15 m per 1000 pixels and a horizontal resolution of 3.7 m per 1000 pixels. 
+In video 'challenge_video.mp4' the alignment of the camera seemed to be sightly different so we added a correction term that allows stretching or shrinking the far end to match slightly different alignments.
 
-![alt text][image4]
+Applying this transformation gives us the following image:
 
-#### 4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
+![Warped image][image5]
 
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+#### Line Detection
 
-![alt text][image5]
+We initialize the line detection by computing 2-D to 1-D projection in a sliding window along the y-axis of the warped image.
+The window spans the full width and part of the height. The two local maxima in each window are calculated to find the approximate line position. All points nearby the left and right local maxima within the window are chosen as candidates. 
+Then a polynomial is fit through the candidates. The polynomials should represent the left and right lane markers.
 
-#### 5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
+The sliding window (green), the left and right candidate pixels (blue and red) and the polynomial fit result (yellow) can be seen in this image: 
 
-I did this in lines # through # in my code in `my_other_file.py`
+![Sliding window result][image61]
 
-#### 6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
+#### Line Tracking
+Tracking works essentially the same way but we skip the sliding window candidate search and determine the candidates by selecting all pixels nearby the previously detected polynomial
 
-I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
+![Tracking result][image62]
 
-![alt text][image6]
+#### Detection Quality Check
+In method 'evaluate_detection_quality' the detection quality is assured by computing the metrically correct polynomial using the resolution values for the warped image.
+Then the curvature of left and right lane marker is computed and the offset to the center:
+* The minimum allowed curvature for both markers is set to 250 m.
+* The maximum allowed offset to the center is 2 m.
+* The minimum allowed distance between the lines is 2.7 m, the maximum is 4.7 m (the lane width is assumed to be 3.7 m).
+
+If one of these criteria is not met, the detection is discarded.
+If the detection is considered valid, the estimate of the lane is updated with an infinite-impulse response filter with an update rate of 0.5.
+
+#### Backprojection
+The final result is then backprojected onto the original image and a polygon is drawn onto the detected lane:
+
+![Final result][image7]
 
 ---
 
@@ -93,7 +138,7 @@ I implemented this step in lines # through # in my code in `yet_another_file.py`
 
 #### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
 
-Here's a [link to my video result](./project_video.mp4)
+Here's a [link to my video result](./project_video_re.mp4)
 
 ---
 
