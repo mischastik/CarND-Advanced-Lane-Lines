@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 
-def pipeline(img, s_thresh=(0.3, 1.0), sm_thresh=(50, 130), sd_thresh=(0.7, 1.15)):
+def thresholding(img, s_thresh=(0.3, 1.0), sm_thresh=(50, 130), sd_thresh=(0.7, 1.15)):
     img = np.copy(img)
     # Convert to HLS color space and separate the V channel
     hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS).astype(np.float)
