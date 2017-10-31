@@ -1,25 +1,10 @@
-## Writeup Template
-
-### You can use this file as a template for your writeup if you want to submit it as a markdown file, but feel free to use some other method and submit a pdf if you prefer.
-
----
-
 **Advanced Lane Finding Project**
-
-The goals / steps of this project are the following:
-
-* Compute the camera calibration matrix and distortion coefficients given a set of chessboard images.
-* Apply a distortion correction to raw images.
-* Use color transforms, gradients, etc., to create a thresholded binary image.
-* Apply a perspective transform to rectify binary image ("birds-eye view").
-* Detect lane pixels and fit to find the lane boundary.
-* Determine the curvature of the lane and vehicle position with respect to center.
-* Warp the detected lane boundaries back onto the original image.
-* Output visual display of the lane boundaries and numerical estimation of lane curvature and vehicle position.
 
 [//]: # (Image References)
 
-[image1]: ./examples/undistort_output.png "Undistorted"
+[image1]: ./writeup_materials/calibration3.jpg "Original"
+[image11]: ./writeup_materials/calibration3_undistorted.jpg "Undistorted"
+
 [image2]: ./test_images/test1.jpg "Road Transformed"
 [image3]: ./examples/binary_combo_example.jpg "Binary Example"
 [image4]: ./examples/warped_straight_lines.jpg "Warp Example"
@@ -27,29 +12,21 @@ The goals / steps of this project are the following:
 [image6]: ./examples/example_output.jpg "Output"
 [video1]: ./project_video.mp4 "Video"
 
-## [Rubric](https://review.udacity.com/#!/rubrics/571/view) Points
-
-### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
-
----
-
-### Writeup / README
-
-#### 1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  [Here](https://github.com/udacity/CarND-Advanced-Lane-Lines/blob/master/writeup_template.md) is a template writeup for this project you can use as a guide and a starting point.  
-
-You're reading it!
-
 ### Camera Calibration
 
-#### 1. Briefly state how you computed the camera matrix and distortion coefficients. Provide an example of a distortion corrected calibration image.
+Camera images are usually distorted because of imperfect projections by the camera lens. With a properly calibrated lens model, these distortions can be reverted algorithmically. This step is mandatory for lane finding because we need to ensure that line in the world space are projected onto lines in the image space to calculate curvature correctly.
+First we need to detemine the parameters of the lens model in order to undistort the camera image. This can be done by taking multiple images of a regular checkerboard. For good results, it is absolutely mandatory that the surface of the checkerboard is absolutely flat and that the corner distances are homogeneous up to a few micrometers.
+The camera calibration is done in method the 'calibrate_camera' in 'imageTransformation.py'.
+For calibration we need to object points and the according coordinates of the projected corners in image space. 
+The object points are the 3-D corner points in "checkerboard space" with the z-coodinate being 0. In this case it's simply a meshgrid of 9x6 elements with an increment of one since the true metric corner distance is unknown and not required for this calibration. 
+The projected coordinates inner checkerboard corners are detected with OpenCV's 'findChessboardCorners'.
+The calibration is done with 'calibrateCamera'. It takes to object points and the projected pixel positions in all the images. A optimization algorithm then computes the extrinsic (rigid-body-transformation) parameters of each checkerboard and the intrinsic (lens model) parameters of the camera. The checkerboard extrinsics won't be correct in this case because we didn't use the correct metric distances for the object points list. However, we don't need this for the lane finding anyway. 
+Once the model parameters are determined, the calibration is then cached so that it's not computed every time. Please keep in mind that the cached file 'calibration.p' needs to be deleted if a new calibration should be made.
 
-The code for this step is contained in the first code cell of the IPython notebook located in "./examples/example.ipynb" (or in lines # through # of the file called `some_file.py`).  
+OpenCV's 'undistort' method can apply these model parameters to compute an undistorted representation of the image data. This image has zero tangential and radial distortion parameters and basically satisfies a pinhole camera model. This means, lines in world space are actually projected onto lines in image space. The following illustration  shows the effect of undistortion on one of the calibration images:
 
-I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objp` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.  
-
-I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function and obtained this result: 
-
-![alt text][image1]
+![Original checkerboard image][image1]
+![Undistorted checkerboard image][image11]
 
 ### Pipeline (single images)
 
