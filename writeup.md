@@ -136,14 +136,11 @@ The final result is then backprojected onto the original image and a polygon is 
 
 ### Pipeline (video)
 
-#### 1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
-
-Here's a [link to my video result](./project_video_re.mp4)
+Here's a [link to my video result](./project_video_res.mp4)
 
 ---
 
 ### Discussion
 
-#### 1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
-
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+The main issue was the thresholding part. Thresholding on the luminance and gradient magnitude worked fine on the project video but totally failed at the challenge video. The currently used apporach performes a little worse on the project video but much better on the challenge video. Still, major changes in lighting or a less homogenous street texture can pose a lot of problems with the thresholding apporach. A more robust approach would require a smarter lane candidate finding technique, probably something that goes beyond simple channel or edge thresholding.
+Another severe issue was that the challenge video uses a different camera angle which affected the warping and consequently the metrics computation. This could have been solved by finding completely new warping parameters but the correction term also does a sufficient job.
