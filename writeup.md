@@ -5,10 +5,10 @@
 [image1]: ./writeup_materials/calibration3.jpg "Original"
 [image11]: ./writeup_materials/calibration3_undistorted.jpg "Undistorted"
 
-[image2] ./writeup_materials/01_input.png "Sample input"
+[image2]: ./writeup_materials/01_input.png "Sample input"
 
-[image31] ./writeup_materials/02tresholded.png "Thresholded output"
-[image32] ./writeup_materials/03thresholded_after_AND.png "Thresholded final"
+[image31]: ./writeup_materials/02tresholded.png "Thresholded output"
+[image32]: ./writeup_materials/03thresholded_after_AND.png "Thresholded final"
 
 [image4]: ./writeup_materials/04undistorted.png "Undistortion Example"
 
